@@ -2,6 +2,7 @@ import requests
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
+import threading
 
 # Configuration
 token = "YOUR_TELEGRAM_BOT_TOKEN"
@@ -65,15 +66,15 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('', port), Handler)
     print(f"Starting server on port {port}")
-    
+
     # Lancer une boucle séparée pour le bot
-    import threading
     def bot_loop():
         while True:
             check_prices()
             time.sleep(60)  # Vérifie toutes les minutes
 
     threading.Thread(target=bot_loop, daemon=True).start()
-    
+
     # Exécuter le serveur HTTP
     server.serve_forever()
+
