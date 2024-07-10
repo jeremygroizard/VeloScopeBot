@@ -5,10 +5,10 @@ import os
 import threading
 
 # Configuration
-token = "YOUR_TELEGRAM_BOT_TOKEN"
-chat_id = "YOUR_CHAT_ID"
+token = os.getenv("TELEGRAM_BOT_TOKEN")
+chat_id = os.getenv("CHAT_ID")
 headers = {
-    'X-CMC_PRO_API_KEY': 'YOUR_CMC_API_KEY',
+    'X-CMC_PRO_API_KEY': os.getenv("CMC_API_KEY"),
     'Accepts': 'application/json'
 }
 
@@ -21,17 +21,24 @@ class Handler(BaseHTTPRequestHandler):
 
 def get_velo_price():
     url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=VELO"
-    response = requests.get(url, headers=headers)
-    data = response.json()
-    price = data['data']['VELO']['quote']['USD']['price']
-    return price
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Raise an error for bad status codes
+        data = response.json()
+        if 'data' in data and 'VELO' in data['data']:
+            price = data['data']['VELO']['quote']['USD']['price']
+            return price
+        else:
+            raise ValueError("Invalid response structure")
+    except (requests.RequestException, ValueError) as e:
+        print(f"Error fetching VELO price: {e}")
+        return None
 
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = {"chat_id": chat_id, "text": message}
     requests.post(url, data=data)
 
-# Paliers de vente originaux + paliers de test
 sell_levels = [
     (0.0545, 5000),
     (0.1090, 5000),
@@ -44,37 +51,34 @@ sell_levels = [
     (0.8720, 10000),
     (0.9810, 10000),
     (1.0900, 27691),
-    # Paliers de test
-    (0.010, None),  # Palier de test à 0.010 USD
-    (0.011, None),  # Palier de test à 0.011 USD
-    (0.012, None),  # Palier de test à 0.012 USD
+    (0.010, None),
+    (0.011, None),
+    (0.012, None),
 ]
 
 def check_prices():
     current_price = get_velo_price()
-    for level, tokens in sell_levels:
-        if current_price >= level:
-            if tokens is None:
-                message = f"[TEST] Le prix a atteint {level} $."
-            else:
-                message = f"Le prix a atteint {level} $. Vendez {tokens} tokens."
-            send_telegram_alert(message)
-            sell_levels.remove((level, tokens))
+    if current_price is not None:
+        for level, tokens in sell_levels:
+            if current_price >= level:
+                if tokens is None:
+                    message = f"[TEST] Le prix a atteint {level} $."
+                else:
+                    message = f"Le prix a atteint {level} $. Vendez {tokens} tokens."
+                send_telegram_alert(message)
+                sell_levels.remove((level, tokens))
 
 if __name__ == "__main__":
-    # Démarrer le serveur HTTP pour répondre aux vérifications de l'état
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(('', port), Handler)
     print(f"Starting server on port {port}")
 
-    # Lancer une boucle séparée pour le bot
     def bot_loop():
         while True:
             check_prices()
-            time.sleep(60)  # Vérifie toutes les minutes
+            time.sleep(60)
 
     threading.Thread(target=bot_loop, daemon=True).start()
 
-    # Exécuter le serveur HTTP
     server.serve_forever()
 
